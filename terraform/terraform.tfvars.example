@@ -1,0 +1,5 @@
+# Example tfvars
+region             = "ap-south-1"
+image_repository   = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/devops-practical"
+image_tag          = "v1"
+mongo_app_password = "CHANGEME-STRONG!"

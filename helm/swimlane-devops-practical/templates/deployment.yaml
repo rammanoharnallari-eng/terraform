@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: swimlane-app
+  namespace: {{ .Values.namespace }}
+  labels: { app: swimlane-app }
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels: { app: swimlane-app }
+  template:
+    metadata:
+      labels: { app: swimlane-app }
+    spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector: { matchLabels: { app: swimlane-app } }
+      containers:
+      - name: app
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: 3000
+        envFrom:
+        - secretRef: { name: {{ .Values.envFromSecret | quote }} }
+        readinessProbe: { httpGet: { path: "/", port: 3000 }, initialDelaySeconds: 5, periodSeconds: 10 }
+        livenessProbe:  { httpGet: { path: "/", port: 3000 }, initialDelaySeconds: 15, periodSeconds: 20 }
+        resources: {{- toYaml .Values.resources | nindent 10 }}
