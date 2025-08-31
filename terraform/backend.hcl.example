@@ -1,0 +1,5 @@
+bucket         = "<REPLACE_WITH_BUCKET_NAME>"
+key            = "state/eks/terraform.tfstate"
+region         = "<REPLACE_WITH_REGION>"
+dynamodb_table = "<REPLACE_WITH_TABLE_NAME>"
+encrypt        = true

@@ -12,6 +12,14 @@ spec:
     metadata:
       labels: { app: swimlane-app }
     spec:
+      serviceAccountName: swimlane-app
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       topologySpreadConstraints:
       - maxSkew: 1
         topologyKey: topology.kubernetes.io/zone
@@ -25,6 +33,25 @@ spec:
         - containerPort: 3000
         envFrom:
         - secretRef: { name: {{ .Values.envFromSecret | quote }} }
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: var-cache
+          mountPath: /var/cache
         readinessProbe: { httpGet: { path: "/", port: 3000 }, initialDelaySeconds: 5, periodSeconds: 10 }
         livenessProbe:  { httpGet: { path: "/", port: 3000 }, initialDelaySeconds: 15, periodSeconds: 20 }
         resources: {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: var-cache
+        emptyDir: {}

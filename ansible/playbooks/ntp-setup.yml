@@ -1,0 +1,62 @@
+---
+- name: Configure NTP on Kubernetes worker nodes
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    ntp_servers:
+      - "0.pool.ntp.org"
+      - "1.pool.ntp.org"
+      - "2.pool.ntp.org"
+      - "3.pool.ntp.org"
+  
+  tasks:
+    - name: Update package cache
+      package:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+    
+    - name: Install NTP package (Debian/Ubuntu)
+      package:
+        name: ntp
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    - name: Install chrony package (Debian/Ubuntu)
+      package:
+        name: chrony
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    - name: Install chrony package (RHEL/CentOS)
+      package:
+        name: chrony
+        state: present
+      when: ansible_os_family == "RedHat"
+    
+    - name: Configure chrony
+      template:
+        src: chrony.conf.j2
+        dest: /etc/chrony.conf
+        backup: yes
+        owner: root
+        group: root
+        mode: '0644'
+      notify: restart chrony
+    
+    - name: Start and enable chrony service
+      systemd:
+        name: chrony
+        state: started
+        enabled: yes
+        daemon_reload: yes
+    
+    - name: Verify NTP synchronization
+      command: chrony sources -v
+      register: chrony_sources
+      changed_when: false
+    
+    - name: Display NTP sources
+      debug:
+        var: chrony_sources.stdout_lines

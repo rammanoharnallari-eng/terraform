@@ -1,11 +1,6 @@
 locals {
-  mongo_seed_hosts = [
-    "mongodb-0.mongodb-headless.data.svc.cluster.local:27017",
-    "mongodb-1.mongodb-headless.data.svc.cluster.local:27017",
-    "mongodb-2.mongodb-headless.data.svc.cluster.local:27017",
-  ]
-
-  mongo_url = "mongodb://${var.mongo_app_user}:${var.mongo_app_password}@${join(",", local.mongo_seed_hosts)}/${var.mongo_app_database}?replicaSet=rs0&authSource=${var.mongo_app_database}"
+  # Updated to use the simple MongoDB service
+  mongo_url = "mongodb://${var.mongo_app_user}:${var.mongo_app_password}@mongodb-simple.data.svc.cluster.local:27017/${var.mongo_app_database}?authSource=admin"
 }
 
 resource "kubernetes_secret" "app_conn" {
@@ -13,25 +8,105 @@ resource "kubernetes_secret" "app_conn" {
     name      = "app-conn"
     namespace = var.namespace
   }
-
-  data = {
-    MONGODB_URL = local.mongo_url
-  }
-
+  data = { MONGODB_URL = local.mongo_url }
   type = "Opaque"
 }
 
-resource "helm_release" "app" {
-  name      = "swimlane-app"
-  namespace = var.namespace
-  chart     = var.chart_path
+# Use a simple Kubernetes deployment instead of Helm chart
+resource "kubernetes_deployment" "app" {
+  metadata {
+    name      = "swimlane-app-v2"
+    namespace = var.namespace
+  }
 
-  values = [yamlencode({
-    image = {
-      repository = var.image_repository
-      tag        = var.image_tag
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = "swimlane-app-v2"
+      }
     }
-  })]
+
+    template {
+      metadata {
+        labels = {
+          app = "swimlane-app-v2"
+        }
+      }
+
+      spec {
+        container {
+          name  = "app"
+          image = "${var.image_repository}:${var.image_tag}"
+
+          port {
+            container_port = 3000
+          }
+
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.app_conn.metadata[0].name
+            }
+          }
+
+          resources {
+            requests = {
+              cpu    = "100m"
+              memory = "128Mi"
+            }
+            limits = {
+              cpu    = "500m"
+              memory = "256Mi"
+            }
+          }
+
+          # Simplified health checks
+          readiness_probe {
+            http_get {
+              path = "/health"
+              port = 3000
+            }
+            initial_delay_seconds = 10
+            period_seconds        = 30
+            timeout_seconds       = 5
+            failure_threshold     = 3
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/health"
+              port = 3000
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 60
+            timeout_seconds       = 10
+            failure_threshold     = 5
+          }
+        }
+      }
+    }
+  }
 
   depends_on = [kubernetes_secret.app_conn]
+}
+
+resource "kubernetes_service" "app" {
+  metadata {
+    name      = "swimlane-app-v2"
+    namespace = var.namespace
+  }
+
+  spec {
+    selector = {
+      app = "swimlane-app-v2"
+    }
+
+    port {
+      port        = 3000
+      target_port = 3000
+    }
+
+    type = "LoadBalancer"
+  }
 }

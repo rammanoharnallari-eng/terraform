@@ -1,0 +1,18 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: swimlane-app
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: swimlane-app
+spec:
+  selector:
+    matchLabels:
+      app: swimlane-app
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+{{- end }}

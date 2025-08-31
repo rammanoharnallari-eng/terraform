@@ -2,3 +2,6 @@ region             = "us-east-1"
 image_repository   = "000000000000.dkr.ecr.us-east-1.amazonaws.com/devops-practical" # replace with your account id
 image_tag          = "v1"
 mongo_app_password = "CHANGEME-STRONG!"
+
+# EKS Configuration
+excluded_availability_zones = ["us-east-1e"]  # EKS doesn't support us-east-1e

@@ -1,0 +1,153 @@
+---
+- name: Install Kubernetes dependencies on worker nodes
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Update package cache (Debian/Ubuntu)
+      package:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+    
+    - name: Update package cache (RHEL/CentOS)
+      yum:
+        update_cache: yes
+      when: ansible_os_family == "RedHat"
+    
+    - name: Install required packages (Debian/Ubuntu)
+      package:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - software-properties-common
+          - containerd.io
+          - docker-ce
+          - docker-ce-cli
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    - name: Install required packages (RHEL/CentOS)
+      package:
+        name:
+          - yum-utils
+          - device-mapper-persistent-data
+          - lvm2
+          - containerd.io
+          - docker-ce
+          - docker-ce-cli
+        state: present
+      when: ansible_os_family == "RedHat"
+    
+    - name: Add Docker GPG key (Debian/Ubuntu)
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    - name: Add Docker repository (Debian/Ubuntu)
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    - name: Add Docker repository (RHEL/CentOS)
+      yum_repository:
+        name: docker-ce-stable
+        description: Docker CE Stable - $basearch
+        baseurl: https://download.docker.com/linux/centos/7/$basearch/stable
+        gpgcheck: yes
+        gpgkey: https://download.docker.com/linux/centos/gpg
+        enabled: yes
+      when: ansible_os_family == "RedHat"
+    
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+        daemon_reload: yes
+    
+    - name: Start and enable containerd service
+      systemd:
+        name: containerd
+        state: started
+        enabled: yes
+        daemon_reload: yes
+    
+    - name: Configure containerd
+      template:
+        src: containerd.toml.j2
+        dest: /etc/containerd/config.toml
+        backup: yes
+        owner: root
+        group: root
+        mode: '0644'
+      notify: restart containerd
+    
+    - name: Add Kubernetes GPG key
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    - name: Add Kubernetes repository
+      apt_repository:
+        repo: "deb https://apt.kubernetes.io/ kubernetes-xenial main"
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    - name: Install kubelet, kubeadm, kubectl (Debian/Ubuntu)
+      package:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+      when: ansible_os_family == "Debian"
+    
+    - name: Install kubelet, kubeadm, kubectl (RHEL/CentOS)
+      package:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+      when: ansible_os_family == "RedHat"
+    
+    - name: Start and enable kubelet service
+      systemd:
+        name: kubelet
+        state: started
+        enabled: yes
+        daemon_reload: yes
+    
+    - name: Configure sysctl for Kubernetes
+      sysctl:
+        name: "{{ item }}"
+        value: "1"
+        state: present
+        reload: yes
+      loop:
+        - net.bridge.bridge-nf-call-iptables
+        - net.bridge.bridge-nf-call-ip6tables
+        - net.ipv4.ip_forward
+    
+    - name: Load required kernel modules
+      modprobe:
+        name: "{{ item }}"
+      loop:
+        - br_netfilter
+        - overlay
+    
+    - name: Make kernel modules persistent
+      lineinfile:
+        path: /etc/modules-load.d/k8s.conf
+        line: "{{ item }}"
+        create: yes
+      loop:
+        - br_netfilter
+        - overlay

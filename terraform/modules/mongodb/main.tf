@@ -1,13 +1,9 @@
 resource "kubernetes_namespace" "data" {
-  metadata {
-    name = var.namespace
-  }
+  metadata { name = var.namespace }
 }
 
 resource "kubernetes_namespace" "apps" {
-  metadata {
-    name = var.app_namespace
-  }
+  metadata { name = var.app_namespace }
 }
 
 resource "random_password" "mongo_root" {
@@ -15,42 +11,96 @@ resource "random_password" "mongo_root" {
   special = true
 }
 
-resource "helm_release" "mongodb" {
-  name       = "mongodb"
-  namespace  = kubernetes_namespace.data.metadata[0].name
-  repository = "https://charts.bitnami.com/bitnami"
-  chart      = "mongodb"
+# Use a simple MongoDB deployment with emptyDir storage
+resource "kubernetes_deployment" "mongodb" {
+  metadata {
+    name      = "mongodb-simple"
+    namespace = kubernetes_namespace.data.metadata[0].name
+  }
 
-  values = [yamlencode({
-    architecture = "replicaset"
-    replicaCount = 3
-    auth = {
-      enabled      = true
-      rootUser     = "root"
-      rootPassword = random_password.mongo_root.result
-      username     = var.app_user
-      password     = var.app_password
-      database     = var.app_database
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = "mongodb-simple"
+      }
     }
-    persistence = {
-      enabled = true
-      size    = "10Gi"
-    }
-    replicaSetName = "rs0"
-    podDisruptionBudget = {
-      enabled     = true
-      minAvailable = 1
-    }
-    podAntiAffinityPreset = "hard"
-    topologySpreadConstraints = [{
-      maxSkew           = 1
-      topologyKey       = "topology.kubernetes.io/zone"
-      whenUnsatisfiable = "DoNotSchedule"
-      labelSelector = {
-        matchLabels = {
-          "app.kubernetes.io/name" = "mongodb"
+
+    template {
+      metadata {
+        labels = {
+          app = "mongodb-simple"
         }
       }
-    }]
-  })]
+
+      spec {
+        container {
+          name  = "mongodb"
+          image = "mongo:7.0"
+
+          port {
+            container_port = 27017
+          }
+
+          env {
+            name  = "MONGO_INITDB_ROOT_USERNAME"
+            value = "root"
+          }
+
+          env {
+            name  = "MONGO_INITDB_ROOT_PASSWORD"
+            value = random_password.mongo_root.result
+          }
+
+          env {
+            name  = "MONGO_INITDB_DATABASE"
+            value = var.app_database
+          }
+
+          resources {
+            requests = {
+              cpu    = "100m"
+              memory = "256Mi"
+            }
+            limits = {
+              cpu    = "500m"
+              memory = "512Mi"
+            }
+          }
+
+          volume_mount {
+            name       = "mongodb-storage"
+            mount_path = "/data/db"
+          }
+        }
+
+        volume {
+          name = "mongodb-storage"
+          empty_dir {}
+        }
+      }
+    }
+  }
 }
+
+resource "kubernetes_service" "mongodb" {
+  metadata {
+    name      = "mongodb-simple"
+    namespace = kubernetes_namespace.data.metadata[0].name
+  }
+
+  spec {
+    selector = {
+      app = "mongodb-simple"
+    }
+
+    port {
+      port        = 27017
+      target_port = 27017
+    }
+  }
+}
+
+output "namespace"     { value = kubernetes_namespace.data.metadata[0].name }
+output "app_namespace" { value = kubernetes_namespace.apps.metadata[0].name }

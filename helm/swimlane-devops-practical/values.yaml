@@ -25,3 +25,8 @@ pdb:
   minAvailable: 1
 
 envFromSecret: "app-conn"
+
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true

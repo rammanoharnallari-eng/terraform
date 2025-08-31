@@ -1,0 +1,292 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops-practical
+  labels:
+    name: devops-practical
+    app: devops-practical
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devops-practical-config
+  namespace: devops-practical
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  HOSTNAME: "0.0.0.0"
+
+---
+# Secret for MongoDB connection (replace with your actual MongoDB URL)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: devops-practical-secrets
+  namespace: devops-practical
+type: Opaque
+stringData:
+  MONGODB_URL: "mongodb://mongodb-service:27017/devops-practical"
+
+---
+# Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: devops-practical-sa
+  namespace: devops-practical
+
+---
+# ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: devops-practical-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "endpoints"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: devops-practical-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: devops-practical-role
+subjects:
+- kind: ServiceAccount
+  name: devops-practical-sa
+  namespace: devops-practical
+
+---
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-practical
+  namespace: devops-practical
+  labels:
+    app: devops-practical
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: devops-practical
+  template:
+    metadata:
+      labels:
+        app: devops-practical
+        version: v1
+    spec:
+      serviceAccountName: devops-practical-sa
+      containers:
+      - name: devops-practical
+        image: 052958000889.dkr.ecr.us-east-1.amazonaws.com/devops-practical:latest
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: NODE_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: devops-practical-config
+              key: NODE_ENV
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: devops-practical-config
+              key: PORT
+        - name: HOSTNAME
+          valueFrom:
+            configMapKeyRef:
+              name: devops-practical-config
+              key: HOSTNAME
+        - name: MONGODB_URL
+          valueFrom:
+            secretKeyRef:
+              name: devops-practical-secrets
+              key: MONGODB_URL
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: devops-practical-service
+  namespace: devops-practical
+  labels:
+    app: devops-practical
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: devops-practical
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: devops-practical-hpa
+  namespace: devops-practical
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: devops-practical
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# Pod Disruption Budget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: devops-practical-pdb
+  namespace: devops-practical
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: devops-practical
+
+---
+# Network Policy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: devops-practical-netpol
+  namespace: devops-practical
+spec:
+  podSelector:
+    matchLabels:
+      app: devops-practical
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3000
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: mongodb
+    ports:
+    - protocol: TCP
+      port: 27017
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+
+---
+# ServiceMonitor for Prometheus (if using Prometheus Operator)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: devops-practical-monitor
+  namespace: devops-practical
+  labels:
+    app: devops-practical
+spec:
+  selector:
+    matchLabels:
+      app: devops-practical
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+
+---
+# Ingress (optional - uncomment and configure if you have an ingress controller)
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: devops-practical-ingress
+#   namespace: devops-practical
+#   annotations:
+#     kubernetes.io/ingress.class: "nginx"
+#     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+# spec:
+#   tls:
+#   - hosts:
+#     - devops-practical.yourdomain.com
+#     secretName: devops-practical-tls
+#   rules:
+#   - host: devops-practical.yourdomain.com
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: devops-practical-service
+#             port:
+#               number: 80
