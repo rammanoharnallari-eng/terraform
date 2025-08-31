@@ -18,11 +18,9 @@ resource "kubernetes_secret" "app_conn" {
 resource "helm_release" "app" {
   name       = "swimlane-app"
   namespace  = var.namespace
-  chart      = var.chart_path  # local chart path
-  # set image via values overrides
+  chart      = var.chart_path
   values = [yamlencode({
     image = { repository = var.image_repository, tag = var.image_tag }
   })]
-
   depends_on = [kubernetes_secret.app_conn]
 }

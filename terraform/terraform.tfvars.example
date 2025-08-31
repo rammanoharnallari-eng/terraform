@@ -1,5 +1,4 @@
-# Example tfvars
-region             = "ap-south-1"
-image_repository   = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/devops-practical"
+region             = "us-east-1"
+image_repository   = "000000000000.dkr.ecr.us-east-1.amazonaws.com/devops-practical" # replace with your account id
 image_tag          = "v1"
 mongo_app_password = "CHANGEME-STRONG!"

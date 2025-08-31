@@ -1,3 +1,1 @@
-locals {
-  tags = { Project = var.name, ManagedBy = "terraform" }
-}
+locals { tags = { Project = var.name, ManagedBy = "terraform" } }
